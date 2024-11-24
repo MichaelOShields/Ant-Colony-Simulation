@@ -66,7 +66,7 @@ RED = (255,0,0)
 GRAY = (100,100,100)
 GREEN = (0,255,0)
 BLUE = (0,0,255)
-#comment
+
 
 # Grid Initialization
 # Start with all nodes as undug earth (represented as 0)
