@@ -50,9 +50,9 @@ spacebar_wait = False  # Waiting on next input for spacebar to place food
 dig_wait = False
 FOG_OF_WAR = False
 ant_sight = 2
-mouse_intensity = 10
+mouse_intensity = 1
 pheremone_lifespan = .1  # how many frames per intensity decrease
-mouse_radius = 1
+mouse_radius = 0
 
 
 
@@ -88,12 +88,43 @@ if not EMPTY_GRID:
         name = os.listdir('./colony_maps')[index]
         maps.update({str(index):name})
         print(name + ":",index)
-    map_index = input("Please enter the number of the map you'd like to use: ")
-    map_index = int(map_index)
-    map_name = maps[str(map_index)]
-    grid = read_txt(GRID_SIZE,map_name)
+    map_index = input("Please enter the number of the map you'd like to use (or enter 'c' if you'd like a clear map): ")
+    if not map_index == 'c':
+        map_index = int(map_index)
+        map_name = maps[str(map_index)]
+        grid = read_txt(GRID_SIZE,map_name)
 
 
+
+# Pheremone types:
+NO_PHER = 0
+FOOD_PHER = 1
+NO_FOOD_PHER = 2
+
+# Intensity: 0-10, 0 being no pheremone, 10 being recent pheremone
+
+"""
+Pheremone rules:
+- Can only exist in air
+- Pheremone grid only use is to iterate thru all pheremones?
+"""
+
+
+food_pheremone_grid = [[(0,x,y) for x in range(GRID_SIZE)] for y in range(GRID_SIZE)]  # 0-10 intensity, x of source, y of source
+nonzero_food_phers = []  # List of tuples of food_pheremone_grid that aren't zero (helpful for iterating)
+
+no_food_pheremone_grid = [[(0,x,y) for x in range(GRID_SIZE)] for y in range(GRID_SIZE)]
+nonzero_no_food_phers = []  # List of tuples of no_food_pheremone_grid that aren't zero (helpful for iterating)
+
+pheremone_list = {
+    FOOD_PHER:food_pheremone_grid,
+    NO_FOOD_PHER:no_food_pheremone_grid
+}
+
+nonzero_pheremone_list = {
+    FOOD_PHER:nonzero_food_phers,
+    NO_FOOD_PHER:nonzero_no_food_phers
+}
 
 
 pheremone_grid = []
@@ -101,7 +132,7 @@ pheremone_grid = []
 for _ in range(GRID_SIZE):  # Create physical grid
     row = []
     for _ in range(GRID_SIZE): # Create columns
-        row.append((0,0))  # Initialize as (0,0); no pheremone, no intensity
+        row.append(0)
     pheremone_grid.append(row)
 
 # Pygame Setup
@@ -120,23 +151,27 @@ FOOD = 2
 ANT = 3
 DEBUG_NODE = 10
 
-# Pheremone types:
-NO_PHER = 0
-FOOD_PHER = 1
-NO_FOOD_PHER = 2
 
+import statistics
+def average_colors(colors,intensities):  # list of color tuples; [grid node color, pheremone color 1,...],list of intensities
+    # VERY INOPTIMAL AND SLOW
+    new_intensities = [sum(intensities)] + intensities  # incl. gride intensity as 1/2 of all others
+    print(new_intensities)
+    denominator = sum(new_intensities)
+    final_color = [0 for _ in range(3)]
+    for rgb_index in range(3):
+        current_val = 0
+        for index,color in enumerate(colors):
+            print(color)
+            current_val += (color[rgb_index]) * new_intensities[index]
+            # print(new_intensities[rgb_index])
+        final_color[rgb_index] = (math.floor((current_val)/max(1,denominator)))
+    return tuple(final_color)
 
-# Intensity: 0-10, 0 being no pheremone, 10 being recent pheremone
-
-def average_colors(color1,color2,intensity):
-    color3 = []
-    for x in range(len(color1)):
-        color3.append(math.floor(((10 * color1[x]) + (intensity * color2[x]))/(10 + intensity)))
-    return tuple(color3)
 
 def return_grid_color(x,y):
     if grid[x][y] == GROUND:  # Undug earth
-        return WHITE
+        return BLACK
     elif grid[x][y] == AIR:  # Air
         return BLACK
     elif grid[x][y] == FOOD:
@@ -146,15 +181,20 @@ def return_grid_color(x,y):
     elif grid[x][y] == DEBUG_NODE:
         return RED
 
+def pheremone_to_color(pheremone_type):
+    if pheremone_type == FOOD_PHER:
+        return GREEN
+    elif pheremone_type == NO_FOOD_PHER:
+        return BLUE
+
 def return_pheremone_color(x,y):
-    pher_color = None
-    if pheremone_grid[x][y][0] == NO_PHER:
-        return return_grid_color(x,y)
-    elif pheremone_grid[x][y][0] == FOOD_PHER:
-        pher_color = GREEN
-    elif pheremone_grid[x][y][0] == NO_FOOD_PHER:
-        pher_color = BLUE
-    return average_colors(return_grid_color(x,y),pher_color,pheremone_grid[x][y][1])
+    colors = []
+    intensities = []
+    for key,item in pheremone_list.items():
+        if item[x][y][0] > 0:
+            colors.append(pheremone_to_color(key))
+            intensities.append(item[x][y][0])
+    return average_colors([return_grid_color(x,y)] + colors,intensities)
 
 def pixel_to_index(pixel):
     return pixel // NODE_SIZE
@@ -193,7 +233,7 @@ def draw_grid():
                 if grid[x][y] == GROUND:  # Undug earth
                     pygame.draw.rect(screen, BLACK, rect)  # Earth
                 elif grid[x][y] == AIR:  # Air
-                    pygame.draw.rect(screen, return_pheremone_color(x,y), rect)  # Air
+                    pygame.draw.rect(screen, BLACK, rect)  # Air
                     draw_white_bounds(x,y)
                 elif grid[x][y] == FOOD:
                     pygame.draw.rect(screen, YELLOW, rect)  # Yellow
@@ -203,6 +243,14 @@ def draw_grid():
                     draw_white_bounds(x,y)
                 elif grid[x][y] == DEBUG_NODE:
                     pygame.draw.rect(screen, RED, rect)  # Brown
+        for key,item in nonzero_pheremone_list.items():
+            # item is a list of nonzero pheremone things i think
+            for index,element in enumerate(item):
+                rect = pygame.Rect(index_to_pixel(x), index_to_pixel(y), NODE_SIZE, NODE_SIZE)
+                print(element)
+                x,y = element[0],element[1]
+                if grid[x][y] == AIR:
+                    pygame.draw.rect(screen, return_pheremone_color(x,y), rect)  # Air
         for z in range(len(start_pos_bound_coords)):
             pygame.draw.line(screen,WHITE,start_pos_bound_coords[z],end_pos_bound_coords[z], 1)
 
@@ -252,12 +300,15 @@ def draw_pheremone(mouse_pos,rad,pheremone_type, intensity):
     x, y = mouse_pos
     grid_x = pixel_to_index(x)
     grid_y = pixel_to_index(y)
-
-    if 0 <= grid_x < GRID_SIZE and 0 <= grid_y < GRID_SIZE:
-        pheremone_grid[grid_x][grid_y] = (pheremone_type,intensity)
+    if grid[grid_x][grid_y] == AIR:
+        if 0 <= grid_x < GRID_SIZE and 0 <= grid_y < GRID_SIZE:
+            pheremone_list[pheremone_type][grid_x][grid_y] = (intensity,grid_x,grid_y)
     for x1 in range(max(0,grid_x - rad), min(grid_x + rad,GRID_SIZE - 1) + 1):
         for y1 in range(max(0,grid_y - rad), min(grid_y + rad,GRID_SIZE - 1) + 1):
-            pheremone_grid[x1][y1] = (pheremone_type, intensity)
+            if grid[x1][y1] == AIR:
+                pheremone_list[pheremone_type][x1][y1] = (intensity,x1,y1)
+                nonzero_pheremone_list[pheremone_type].append((x1,y1))
+
 
 
 def check_bounds(x,y,rad):  # Check nodes w/in radius (2 for 3x3, 1 for 2x2, 0 for 1x1), return list of node types(?)
@@ -405,13 +456,22 @@ def send_keys(key):
 
 # Main Loop
 while running:
-    screen.fill(GRAY)
+    screen.fill(BLACK)
     draw_grid()
     pygame.display.flip()
     clock.tick(30)
-    for x in range(GRID_SIZE):
-        for y in range(GRID_SIZE):
-            pheremone_grid[x][y] = (pheremone_grid[x][y][0],max(pheremone_grid[x][y][1] - pheremone_lifespan,0))
+    for index,element in enumerate(nonzero_food_phers):
+        current_pher = food_pheremone_grid[element[0]][element[1]]
+        food_pheremone_grid[element[0]][element[1]] = (max(0,current_pher[0] - pheremone_lifespan),current_pher[1],current_pher[2])
+        if current_pher[0] <= 0:
+            nonzero_food_phers.pop(index)
+            food_pheremone_grid[element[0]][element[1]] = (0,current_pher[1],current_pher[2])
+    for index,element in enumerate(nonzero_no_food_phers):
+        current_pher = no_food_pheremone_grid[element[0]][element[1]]
+        no_food_pheremone_grid[element[0]][element[1]] = (max(0,current_pher[0] - pheremone_lifespan),current_pher[1],current_pher[2])
+        if current_pher[0] <= 0:
+            nonzero_no_food_phers.pop(index)
+            no_food_pheremone_grid[element[0]][element[1]] = (0,current_pher[1],current_pher[2])
 
     # Event Handling
     for event in pygame.event.get():
@@ -452,10 +512,12 @@ while running:
         if pygame.mouse.get_pressed(3)[0]:  # Left click // make air
             draw_node(pygame.mouse.get_pos(),AIR,mouse_radius)
         if pygame.mouse.get_pressed(3)[2]:  # Right click // make food
-            draw_node(pygame.mouse.get_pos(),GROUND,0)
+            draw_node(pygame.mouse.get_pos(),FOOD,0)
         if pygame.mouse.get_pressed(3)[1]:  # Middle click // make ant
             Ant(pixel_to_index(pygame.mouse.get_pos()[0]),pixel_to_index(pygame.mouse.get_pos()[1]))
         if pygame.mouse.get_pressed(5)[4]:
             draw_pheremone(pygame.mouse.get_pos(),mouse_radius,FOOD_PHER,mouse_intensity)
+        if pygame.mouse.get_pressed(5)[3]:
+            draw_pheremone(pygame.mouse.get_pos(),mouse_radius,NO_FOOD_PHER,mouse_intensity)
 
 pygame.quit()
