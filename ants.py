@@ -267,7 +267,7 @@ def count_neighbors(position):
 
 #region Ant
 
-ant_lifespan = GRID_SIZE  # number of moves they can make until they die
+ant_lifespan = GRID_SIZE ** 2  # number of moves they can make until they die
 
 ants = []  # List of all ants
 ant_positions = {}  # (x,y):ant memory reference // used to destroy ants that are drawn over
